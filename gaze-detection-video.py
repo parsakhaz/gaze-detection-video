@@ -1,17 +1,81 @@
+"""
+Gaze Detection Video Processor using Moondream Next
+------------------------------------------------
+IMPORTANT: You must have libvips installed on your system before running this script.
+
+Installation instructions:
+- Ubuntu/Debian: sudo apt-get update && sudo apt-get install -y libvips42 libvips-dev
+- CentOS/RHEL: sudo yum install vips vips-devel
+- macOS: brew install vips
+- Windows: Download from https://github.com/libvips/build-win64/releases
+"""
+
 import torch
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
-from moondream.torch.config import MoondreamConfig
-from moondream.torch.moondream import MoondreamModel
-from moondream.torch.weights import load_weights_into_model
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from huggingface_hub import login, model_info
 from tqdm import tqdm
 import os
 import glob
+import json
+import datetime
 from typing import List, Dict, Tuple, Optional
 from contextlib import contextmanager
 
+def setup_huggingface():
+    """Setup Hugging Face authentication."""
+    try:
+        print("\nSetting up Hugging Face authentication...")
+        token = input("Enter your Hugging Face token (or press Enter to use login() instead): ").strip()
+
+        if token:
+            login(token=token)
+            print("✓ Successfully logged in with token")
+        else:
+            print("\nPlease login to Hugging Face in the browser window that opens...")
+            login()
+            print("✓ Successfully logged in")
+    except Exception as e:
+        print(f"\nError during Hugging Face authentication:")
+        print(f"• Error type: {type(e).__name__}")
+        print(f"• Error message: {str(e)}")
+        raise
+
+def initialize_model() -> Tuple[Optional[AutoModelForCausalLM], Optional[AutoTokenizer]]:
+    """Initialize the Moondream Next model with error handling."""
+    try:
+        print("\nInitializing Moondream Next model...")
+        model_id = "vikhyatk/moondream-next"
+        
+        if torch.cuda.is_available():
+            print(f"GPU detected: {torch.cuda.get_device_name(0)}")
+            device = "cuda"
+        else:
+            print("No GPU detected, using CPU")
+            device = "cpu"
+        
+        print("Loading model from HuggingFace...")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            trust_remote_code=True,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            low_cpu_mem_usage=True
+        )
+        
+        model = model.to(device)
+        model.eval()
+
+        print("Loading tokenizer...")
+        tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+        print("✓ Model initialized successfully")
+        return model, tokenizer
+    except Exception as e:
+        print(f"\nError initializing model: {e}")
+        return None, None
 
 @contextmanager
 def video_handler(input_path: str, output_path: str) -> Tuple[cv2.VideoCapture, cv2.VideoWriter]:
@@ -36,7 +100,6 @@ def video_handler(input_path: str, output_path: str) -> Tuple[cv2.VideoCapture, 
         out.release()
         cv2.destroyAllWindows()
 
-
 def fig2rgb_array(fig: plt.Figure) -> np.ndarray:
     """Convert matplotlib figure to RGB array"""
     fig.canvas.draw()
@@ -46,91 +109,108 @@ def fig2rgb_array(fig: plt.Figure) -> np.ndarray:
     rgb_array = img_array[:, :, :3]  # Drop alpha channel
     return rgb_array
 
-
-def visualize_frame(frame: np.ndarray, faces: List[Dict], encoded_image: torch.Tensor, model: MoondreamModel) -> np.ndarray:
+def visualize_frame(frame: np.ndarray, faces: List[Dict], model: AutoModelForCausalLM, tokenizer: AutoTokenizer, pil_image: Image) -> np.ndarray:
     """Visualize a single frame using matplotlib"""
-    # Create figure without margins
-    fig = plt.figure(figsize=(frame.shape[1] / 100, frame.shape[0] / 100), dpi=100)
-    ax = fig.add_axes([0, 0, 1, 1])
+    try:
+        # Create figure without margins
+        fig = plt.figure(figsize=(frame.shape[1] / 100, frame.shape[0] / 100), dpi=100)
+        ax = fig.add_axes([0, 0, 1, 1])
 
-    # Display frame
-    ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        # Display frame
+        ax.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
-    # Sort faces by x_min coordinate for stable colors
-    faces = sorted(faces, key=lambda f: (f["y_min"], f["x_min"]))
+        # Sort faces by x_min coordinate for stable colors
+        faces = sorted(faces, key=lambda f: (f["y_min"], f["x_min"]))
 
-    # Generate colors
-    colors = plt.cm.rainbow(np.linspace(0, 1, len(faces)))
+        # Generate colors
+        colors = plt.cm.rainbow(np.linspace(0, 1, max(1, len(faces))))
 
-    # Process each face
-    for face, color in zip(faces, colors):
-        # Calculate face box coordinates
-        x_min = int(face["x_min"] * frame.shape[1])
-        y_min = int(face["y_min"] * frame.shape[0])
-        width = int((face["x_max"] - face["x_min"]) * frame.shape[1])
-        height = int((face["y_max"] - face["y_min"]) * frame.shape[0])
+        # Process each face
+        for face, color in zip(faces, colors):
+            try:
+                # Calculate face box coordinates
+                x_min = int(float(face["x_min"]) * frame.shape[1])
+                y_min = int(float(face["y_min"]) * frame.shape[0])
+                width = int(float(face["x_max"] - face["x_min"]) * frame.shape[1])
+                height = int(float(face["y_max"] - face["y_min"]) * frame.shape[0])
 
-        # Draw face rectangle
-        rect = plt.Rectangle(
-            (x_min, y_min), width, height, fill=False, color=color, linewidth=2
-        )
-        ax.add_patch(rect)
+                # Draw face rectangle
+                rect = plt.Rectangle(
+                    (x_min, y_min), width, height, fill=False, color=color, linewidth=2
+                )
+                ax.add_patch(rect)
 
-        # Calculate face center
-        face_center = (
-            (face["x_min"] + face["x_max"]) / 2,
-            (face["y_min"] + face["y_max"]) / 2,
-        )
-
-        # Try to detect gaze
-        gaze = model.detect_gaze(encoded_image, face_center)["gaze"]
-
-        if gaze is not None:
-            gaze_x = int(gaze["x"] * frame.shape[1])
-            gaze_y = int(gaze["y"] * frame.shape[0])
-            face_center_x = x_min + width // 2
-            face_center_y = y_min + height // 2
-
-            # Draw gaze line with gradient effect
-            points = 50
-            alphas = np.linspace(0.8, 0, points)
-
-            # Calculate points along the line
-            x_points = np.linspace(face_center_x, gaze_x, points)
-            y_points = np.linspace(face_center_y, gaze_y, points)
-
-            # Draw gradient line segments
-            for i in range(points - 1):
-                ax.plot(
-                    [x_points[i], x_points[i + 1]],
-                    [y_points[i], y_points[i + 1]],
-                    color=color,
-                    alpha=alphas[i],
-                    linewidth=4,
+                # Calculate face center
+                face_center = (
+                    float(face["x_min"] + face["x_max"]) / 2,
+                    float(face["y_min"] + face["y_max"]) / 2,
                 )
 
-            # Draw gaze point
-            ax.scatter(gaze_x, gaze_y, color=color, s=100, zorder=5)
-            ax.scatter(gaze_x, gaze_y, color="white", s=50, zorder=6)
+                # Try to detect gaze
+                try:
+                    gaze_result = model.detect_gaze(pil_image, face_center, tokenizer)
+                    if isinstance(gaze_result, dict) and "gaze" in gaze_result:
+                        gaze = gaze_result["gaze"]
+                    else:
+                        gaze = gaze_result
+                except Exception as e:
+                    print(f"Error detecting gaze: {e}")
+                    continue
 
-    # Configure axes
-    ax.set_xlim(0, frame.shape[1])
-    ax.set_ylim(frame.shape[0], 0)
-    ax.axis("off")
+                if gaze is not None and isinstance(gaze, dict) and "x" in gaze and "y" in gaze:
+                    gaze_x = int(float(gaze["x"]) * frame.shape[1])
+                    gaze_y = int(float(gaze["y"]) * frame.shape[0])
+                    face_center_x = x_min + width // 2
+                    face_center_y = y_min + height // 2
 
-    # Convert matplotlib figure to image
-    frame_rgb = fig2rgb_array(fig)
+                    # Draw gaze line with gradient effect
+                    points = 50
+                    alphas = np.linspace(0.8, 0, points)
 
-    # Convert RGB to BGR for OpenCV
-    frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                    # Calculate points along the line
+                    x_points = np.linspace(face_center_x, gaze_x, points)
+                    y_points = np.linspace(face_center_y, gaze_y, points)
 
-    # Clean up
-    plt.close(fig)
+                    # Draw gradient line segments
+                    for i in range(points - 1):
+                        ax.plot(
+                            [x_points[i], x_points[i + 1]],
+                            [y_points[i], y_points[i + 1]],
+                            color=color,
+                            alpha=alphas[i],
+                            linewidth=4,
+                        )
 
-    return frame_bgr
+                    # Draw gaze point
+                    ax.scatter(gaze_x, gaze_y, color=color, s=100, zorder=5)
+                    ax.scatter(gaze_x, gaze_y, color="white", s=50, zorder=6)
 
+            except Exception as e:
+                print(f"Error processing face: {e}")
+                continue
 
-def process_video(input_path: str, output_path: str, model: MoondreamModel) -> None:
+        # Configure axes
+        ax.set_xlim(0, frame.shape[1])
+        ax.set_ylim(frame.shape[0], 0)
+        ax.axis("off")
+
+        # Convert matplotlib figure to image
+        frame_rgb = fig2rgb_array(fig)
+
+        # Convert RGB to BGR for OpenCV
+        frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+
+        # Clean up
+        plt.close(fig)
+
+        return frame_bgr
+
+    except Exception as e:
+        print(f"Error in visualize_frame: {e}")
+        plt.close('all')
+        return frame
+
+def process_video(input_path: str, output_path: str, model: AutoModelForCausalLM, tokenizer: AutoTokenizer) -> None:
     """Process video file and create new video with gaze visualization"""
     with video_handler(input_path, output_path) as (cap, out):
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -147,42 +227,45 @@ def process_video(input_path: str, output_path: str, model: MoondreamModel) -> N
                 try:
                     # Convert frame for model
                     pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    encoded_image = model.encode_image(pil_image)
 
                     # Detect faces
-                    faces = model.detect(encoded_image, "face")["objects"]
+                    detection_result = model.detect(pil_image, "face", tokenizer)
+                    
+                    # Handle different possible return formats
+                    if isinstance(detection_result, dict) and "objects" in detection_result:
+                        faces = detection_result["objects"]
+                    elif isinstance(detection_result, list):
+                        faces = detection_result
+                    else:
+                        print(f"Unexpected detection result format: {type(detection_result)}")
+                        faces = []
+
+                    # Ensure each face has the required coordinates
+                    faces = [face for face in faces if all(k in face for k in ["x_min", "y_min", "x_max", "y_max"])]
 
                     if not faces:
                         processed_frame = frame
                     else:
                         # Visualize frame with matplotlib
-                        processed_frame = visualize_frame(frame, faces, encoded_image, model)
+                        processed_frame = visualize_frame(frame, faces, model, tokenizer, pil_image)
 
                     # Write frame
                     out.write(processed_frame)
                     pbar.update(1)
+
+                    # Force matplotlib to clean up
+                    plt.close('all')
+                    
                 except Exception as e:
                     print(f"Error processing frame: {e}")
                     out.write(frame)  # Write original frame on error
                     pbar.update(1)
-
-
-def initialize_model() -> Optional[MoondreamModel]:
-    """Initialize the model with error handling."""
-    try:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Using device: {device}")
-        torch.set_default_device(device)
-
-        model = MoondreamModel(MoondreamConfig())
-        load_weights_into_model("doc_jepa5.pt", model)
-        return model
-    except Exception as e:
-        print(f"Error initializing model: {e}")
-        return None
-
+                    plt.close('all')  # Clean up even on error
 
 if __name__ == "__main__":
+    # Setup Hugging Face authentication
+    setup_huggingface()
+
     # Ensure input and output directories exist
     input_dir = os.path.join(os.path.dirname(__file__), "input")
     output_dir = os.path.join(os.path.dirname(__file__), "output")
@@ -200,8 +283,8 @@ if __name__ == "__main__":
         exit(1)
 
     # Initialize model once for all videos
-    model = initialize_model()
-    if model is None:
+    model, tokenizer = initialize_model()
+    if model is None or tokenizer is None:
         print("Failed to initialize model")
         exit(1)
 
@@ -210,7 +293,7 @@ if __name__ == "__main__":
         base_name = os.path.basename(input_video)
         output_video = os.path.join(output_dir, f'processed_{base_name}')
         try:
-            process_video(input_video, output_video, model)
+            process_video(input_video, output_video, model, tokenizer)
         except Exception as e:
             print(f"Error processing {base_name}: {e}")
             continue
