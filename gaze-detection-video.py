@@ -1,13 +1,7 @@
 """
-Gaze Detection Video Processor using Moondream Next
+Gaze Detection Video Processor using Moondream 2
 ------------------------------------------------
-IMPORTANT: You must have libvips installed on your system before running this script.
-
-Installation instructions:
-- Ubuntu/Debian: sudo apt-get update && sudo apt-get install -y libvips42 libvips-dev
-- CentOS/RHEL: sudo yum install vips vips-devel
-- macOS: brew install vips
-- Windows: Download from https://github.com/libvips/build-win64/releases
+Read the README.md file for more information on how to use this script. Contact us in our discord for any questions if you get stuck.
 """
 
 import torch
@@ -15,8 +9,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from huggingface_hub import login, model_info
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from tqdm import tqdm
 import os
 import glob
@@ -25,30 +18,12 @@ import datetime
 from typing import List, Dict, Tuple, Optional
 from contextlib import contextmanager
 
-def setup_huggingface():
-    """Setup Hugging Face authentication."""
-    try:
-        print("\nSetting up Hugging Face authentication...")
-        token = input("Enter your Hugging Face token (or press Enter to use login() instead): ").strip()
-
-        if token:
-            login(token=token)
-            print("✓ Successfully logged in with token")
-        else:
-            print("\nPlease login to Hugging Face in the browser window that opens...")
-            login()
-            print("✓ Successfully logged in")
-    except Exception as e:
-        print(f"\nError during Hugging Face authentication:")
-        print(f"• Error type: {type(e).__name__}")
-        print(f"• Error message: {str(e)}")
-        raise
-
 def initialize_model() -> Tuple[Optional[AutoModelForCausalLM], Optional[AutoTokenizer]]:
-    """Initialize the Moondream Next model with error handling."""
+    """Initialize the Moondream 2 model with error handling."""
     try:
-        print("\nInitializing Moondream Next model...")
-        model_id = "vikhyatk/moondream-next"
+        print("\nInitializing Moondream 2 model...")
+        model_id = "vikhyatk/moondream2"
+        revision = "2025-01-09"  # Specify revision for stability
         
         if torch.cuda.is_available():
             print(f"GPU detected: {torch.cuda.get_device_name(0)}")
@@ -60,16 +35,19 @@ def initialize_model() -> Tuple[Optional[AutoModelForCausalLM], Optional[AutoTok
         print("Loading model from HuggingFace...")
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
+            revision=revision,
             trust_remote_code=True,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
+            device_map={"": device} if device == "cuda" else None
         )
         
-        model = model.to(device)
+        if device == "cpu":
+            model = model.to(device)
         model.eval()
 
         print("Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
+        tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
 
         print("✓ Model initialized successfully")
         return model, tokenizer
@@ -263,9 +241,6 @@ def process_video(input_path: str, output_path: str, model: AutoModelForCausalLM
                     plt.close('all')  # Clean up even on error
 
 if __name__ == "__main__":
-    # Setup Hugging Face authentication
-    setup_huggingface()
-
     # Ensure input and output directories exist
     input_dir = os.path.join(os.path.dirname(__file__), "input")
     output_dir = os.path.join(os.path.dirname(__file__), "output")
