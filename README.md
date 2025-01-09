@@ -1,5 +1,7 @@
 # Gaze Detection Video Processor
 
+> **⚠️ IMPORTANT:** This project currently uses Moondream 2 (2025-01-09 release) via the Hugging Face Transformers library. We will migrate to the official Moondream client libraries once they become available for this version.
+
 This project uses the Moondream 2 model to detect faces and their gaze directions in videos. It processes videos frame by frame, visualizing face detections and gaze directions with dynamic visual effects.
 
 ## Features
@@ -12,7 +14,9 @@ This project uses the Moondream 2 model to detect faces and their gaze direction
   - Gaze target points
 - Supports multiple faces per frame
 - Processes all common video formats (.mp4, .avi, .mov, .mkv)
-- Uses Moondream 2 (2025-01-09 release) - no authentication required
+- Uses Moondream 2 (2025-01-09 release) via Hugging Face Transformers
+  - Note: Will be migrated to official client libraries in future updates
+  - No authentication required
 
 ## Prerequisites
 
@@ -111,8 +115,8 @@ This project uses the Moondream 2 model to detect faces and their gaze direction
 
 ## Dependencies
 
+- transformers (for Moondream 2 model access)
 - torch
-- transformers
 - opencv-python
 - pillow
 - matplotlib
@@ -121,6 +125,21 @@ This project uses the Moondream 2 model to detect faces and their gaze direction
 - pyvips
 - accelerate
 - einops
+
+## Model Details
+
+> **⚠️ IMPORTANT:** This project currently uses Moondream 2 (2025-01-09 release) via the Hugging Face Transformers library. We will migrate to the official Moondream client libraries once they become available for this version.
+
+The model is loaded using:
+
+```python
+from transformers import AutoModelForCausalLM
+model = AutoModelForCausalLM.from_pretrained(
+    "vikhyatk/moondream2",
+    revision="2025-01-09",
+    trust_remote_code=True
+)
+```
 
 ## License
 
