@@ -1,6 +1,6 @@
 # Gaze Detection Video Processor
 
-This project uses the Moondream Next model to detect faces and their gaze directions in videos. It processes videos frame by frame, visualizing face detections and gaze directions with dynamic visual effects.
+This project uses the Moondream 2 model to detect faces and their gaze directions in videos. It processes videos frame by frame, visualizing face detections and gaze directions with dynamic visual effects.
 
 ## Features
 
@@ -12,6 +12,7 @@ This project uses the Moondream Next model to detect faces and their gaze direct
   - Gaze target points
 - Supports multiple faces per frame
 - Processes all common video formats (.mp4, .avi, .mov, .mkv)
+- Uses Moondream 2 (2025-01-09 release) - no authentication required
 
 ## Prerequisites
 
@@ -57,11 +58,6 @@ This project uses the Moondream Next model to detect faces and their gaze direct
    pip install -r requirements.txt
    ```
 
-4. Get a Hugging Face token:
-   - Go to https://huggingface.co/settings/tokens
-   - Create a new token with read access
-   - Save it for use when running the script
-
 ## Usage
 
 1. Place your input videos in the `input` directory
@@ -73,9 +69,7 @@ This project uses the Moondream Next model to detect faces and their gaze direct
    python gaze-detection-video.py
    ```
 
-3. When prompted, enter your Hugging Face token
-
-4. The script will:
+3. The script will:
    - Process all videos in the input directory
    - Show progress bars for each video
    - Save processed videos to the `output` directory with prefix 'processed_'
@@ -119,7 +113,6 @@ This project uses the Moondream Next model to detect faces and their gaze direct
 
 - torch
 - transformers
-- huggingface-hub
 - opencv-python
 - pillow
 - matplotlib
