@@ -4,6 +4,13 @@
 
 This project uses the Moondream 2 model to detect faces and their gaze directions in videos. It processes videos frame by frame, visualizing face detections and gaze directions with dynamic visual effects.
 
+## Sample Output
+
+Input Video | Processed Output
+:-------------------------:|:-------------------------:
+![Input Video](/gif-input-sample.gif) | ![Processed Output](/gif-output-sample.gif)
+
+
 ## Features
 
 - Face detection in video frames

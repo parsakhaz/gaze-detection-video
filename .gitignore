@@ -32,12 +32,12 @@ ENV/
 *.swo
 
 # Project specific
-input/*
-!input/.gitkeep
-output/*
-!output/.gitkeep
-temp/*
-!temp/.gitkeep
+# input/*
+# !input/.gitkeep
+# output/*
+# !output/.gitkeep
+# temp/*
+# !temp/.gitkeep
 
 # Model files
 *.pt
