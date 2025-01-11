@@ -1,5 +1,7 @@
 # Gaze Detection Video Processor
 
+# Note: Visit the [Moondream repositories GitHub](https://github.com/vikhyatk/moondream) and navigate to /recipes for the latest version of this demo.
+
 > **⚠️ IMPORTANT:** This project currently uses Moondream 2 (2025-01-09 release) via the Hugging Face Transformers library. We will migrate to the official Moondream client
 > libraries once they become available for this version.
 
@@ -84,7 +86,7 @@ Windows setup requires a few additional steps for proper GPU support and libvips
 1. Clone the repository:
 
    ```bash
-   git clone [repository-url]
+   git clone https://github.com/parsakhaz/gaze-detection-video.git
    cd gaze-detection-video
    ```
 
@@ -201,18 +203,3 @@ Windows setup requires a few additional steps for proper GPU support and libvips
 
 > **⚠️ IMPORTANT:** This project currently uses Moondream 2 (2025-01-09 release) via the Hugging Face Transformers library. We will migrate to the official Moondream client
 > libraries once they become available for this version.
-
-The model is loaded using:
-
-```python
-from transformers import AutoModelForCausalLM
-model = AutoModelForCausalLM.from_pretrained(
-    "vikhyatk/moondream2",
-    revision="2025-01-09",
-    trust_remote_code=True
-)
-```
-
-## License
-
-MIT License
