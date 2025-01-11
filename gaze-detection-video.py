@@ -9,7 +9,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 from tqdm import tqdm
 import os
 import glob
@@ -18,7 +18,7 @@ import datetime
 from typing import List, Dict, Tuple, Optional
 from contextlib import contextmanager
 
-def initialize_model() -> Tuple[Optional[AutoModelForCausalLM], Optional[AutoTokenizer]]:
+def initialize_model() -> Optional[AutoModelForCausalLM]:
     """Initialize the Moondream 2 model with error handling."""
     try:
         print("\nInitializing Moondream 2 model...")
@@ -46,14 +46,11 @@ def initialize_model() -> Tuple[Optional[AutoModelForCausalLM], Optional[AutoTok
             model = model.to(device)
         model.eval()
 
-        print("Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(model_id, revision=revision)
-
         print("✓ Model initialized successfully")
-        return model, tokenizer
+        return model
     except Exception as e:
         print(f"\nError initializing model: {e}")
-        return None, None
+        return None
 
 @contextmanager
 def video_handler(input_path: str, output_path: str) -> Tuple[cv2.VideoCapture, cv2.VideoWriter]:
@@ -87,7 +84,7 @@ def fig2rgb_array(fig: plt.Figure) -> np.ndarray:
     rgb_array = img_array[:, :, :3]  # Drop alpha channel
     return rgb_array
 
-def visualize_frame(frame: np.ndarray, faces: List[Dict], model: AutoModelForCausalLM, tokenizer: AutoTokenizer, pil_image: Image) -> np.ndarray:
+def visualize_frame(frame: np.ndarray, faces: List[Dict], model: AutoModelForCausalLM, pil_image: Image) -> np.ndarray:
     """Visualize a single frame using matplotlib"""
     try:
         # Create figure without margins
@@ -126,7 +123,7 @@ def visualize_frame(frame: np.ndarray, faces: List[Dict], model: AutoModelForCau
 
                 # Try to detect gaze
                 try:
-                    gaze_result = model.detect_gaze(pil_image, face_center, tokenizer)
+                    gaze_result = model.detect_gaze(pil_image, face_center)
                     if isinstance(gaze_result, dict) and "gaze" in gaze_result:
                         gaze = gaze_result["gaze"]
                     else:
@@ -188,7 +185,7 @@ def visualize_frame(frame: np.ndarray, faces: List[Dict], model: AutoModelForCau
         plt.close('all')
         return frame
 
-def process_video(input_path: str, output_path: str, model: AutoModelForCausalLM, tokenizer: AutoTokenizer) -> None:
+def process_video(input_path: str, output_path: str, model: AutoModelForCausalLM) -> None:
     """Process video file and create new video with gaze visualization"""
     with video_handler(input_path, output_path) as (cap, out):
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -207,7 +204,7 @@ def process_video(input_path: str, output_path: str, model: AutoModelForCausalLM
                     pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
                     # Detect faces
-                    detection_result = model.detect(pil_image, "face", tokenizer)
+                    detection_result = model.detect(pil_image, "face")
                     
                     # Handle different possible return formats
                     if isinstance(detection_result, dict) and "objects" in detection_result:
@@ -225,7 +222,7 @@ def process_video(input_path: str, output_path: str, model: AutoModelForCausalLM
                         processed_frame = frame
                     else:
                         # Visualize frame with matplotlib
-                        processed_frame = visualize_frame(frame, faces, model, tokenizer, pil_image)
+                        processed_frame = visualize_frame(frame, faces, model, pil_image)
 
                     # Write frame
                     out.write(processed_frame)
@@ -258,8 +255,8 @@ if __name__ == "__main__":
         exit(1)
 
     # Initialize model once for all videos
-    model, tokenizer = initialize_model()
-    if model is None or tokenizer is None:
+    model = initialize_model()
+    if model is None:
         print("Failed to initialize model")
         exit(1)
 
@@ -268,7 +265,7 @@ if __name__ == "__main__":
         base_name = os.path.basename(input_video)
         output_video = os.path.join(output_dir, f'processed_{base_name}')
         try:
-            process_video(input_video, output_video, model, tokenizer)
+            process_video(input_video, output_video, model)
         except Exception as e:
             print(f"Error processing {base_name}: {e}")
             continue
