@@ -1,6 +1,6 @@
 # Gaze Detection Video Processor
 
-# Note: Visit the [Moondream repositories GitHub](https://github.com/vikhyatk/moondream) and navigate to /recipes for the latest version of this demo.
+# Note: Visit the [Moondream repositories GitHub](https://github.com/vikhyat/moondream) and navigate to /recipes for the latest version of this demo.
 
 > **⚠️ IMPORTANT:** This project currently uses Moondream 2 (2025-01-09 release) via the Hugging Face Transformers library. We will migrate to the official Moondream client
 > libraries once they become available for this version.
